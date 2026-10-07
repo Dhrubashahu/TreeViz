@@ -1,9 +1,10 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>TreeViz – tree, metadata &amp; population frequency viewer</title>
+<title>TreeViz</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjggMTI4IiB3aWR0aD0iMTI4IiBoZWlnaHQ9IjEyOCI+CiAgPGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJnIiB4MT0iMCIgeTE9IjAiIHgyPSIxIiB5Mj0iMSI+PHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjMWU0MGFmIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMGQ5NDg4Ii8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+CiAgPHJlY3QgeD0iNCIgeT0iNCIgd2lkdGg9IjEyMCIgaGVpZ2h0PSIxMjAiIHJ4PSIyNiIgZmlsbD0idXJsKCNnKSIvPgogIDxnIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSI3IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPgogICAgPHBhdGggZD0iTTIyIDY0IEg0MCBNNDAgMzYgVjkyIE00MCAzNiBINjIgTTQwIDkyIEg2MiBNNjIgMjQgVjQ4IE02MiAyNCBIODQgTTYyIDQ4IEg4NCBNNjIgOTIgSDk2Ii8+CiAgPC9nPgogIDxnIGZpbGw9IiNmZmYiPjxjaXJjbGUgY3g9Ijg0IiBjeT0iMjQiIHI9IjYiLz48Y2lyY2xlIGN4PSI4NCIgY3k9IjQ4IiByPSI2Ii8+PGNpcmNsZSBjeD0iOTYiIGN5PSI5MiIgcj0iNiIvPjwvZz4KICA8ZyBmaWxsPSIjZmJiZjI0Ij48cmVjdCB4PSI3MiIgeT0iNjYiIHdpZHRoPSI3IiBoZWlnaHQ9IjE0IiByeD0iMiIvPjxyZWN0IHg9IjgyIiB5PSI2MCIgd2lkdGg9IjciIGhlaWdodD0iMjAiIHJ4PSIyIi8+PHJlY3QgeD0iOTIiIHk9IjcwIiB3aWR0aD0iNyIgaGVpZ2h0PSIxMCIgcng9IjIiLz48cmVjdCB4PSIxMDIiIHk9IjU2IiB3aWR0aD0iNyIgaGVpZ2h0PSIyNCIgcng9IjIiLz48L2c+Cjwvc3ZnPg==">
 <style>
+:root{color-scheme:light}
 :root{--bd:#d6dbe1;--bg:#f6f7f9;--ac:#2563eb;--tx:#1f2328;--mu:#6b7280}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;font:12.5px/1.35 "Segoe UI",-apple-system,Helvetica,Arial,sans-serif;color:var(--tx);background:#fff;overflow:hidden}
@@ -898,7 +899,11 @@ function freqRowsFlat(){const ff=filteredFreq(),out=[];for(const[node,m]of ff)fo
 function tipOrder(){const a=[];(function w(n){if(isTip(n))a.push(n);else n.children.forEach(w)})(S.root);return a}
 
 /* ---------------------------------------------------------------- export */
-function dl(name,data,type){const b=data instanceof Blob?data:new Blob([data],{type});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast("Saved "+name)}
+let _dlNS;async function dlNS(){if(_dlNS!==undefined)return _dlNS;try{_dlNS=(window.claude&&typeof window.claude.use==="function")?await window.claude.use("downloads"):null}catch(e){_dlNS=null}return _dlNS}
+async function dl(name,data,type){const ns=await dlNS();
+  if(ns){const fn=/\.(gif|png|jpe?g|webp|txt|json|md|csv|html|svg|pdf|xlsx|zip)$/i.test(name)?name:name+".txt";
+    try{await ns.save({filename:fn,data});toast("Saved "+fn)}catch(e){if(!e||e.code!=="declined")toast("Could not save "+fn+(e&&e.message?": "+e.message:""),5000)}return}
+  const b=data instanceof Blob?data:new Blob([data],{type});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast("Saved "+name)}
 function svgString(){const c=$("svg").cloneNode(true);c.querySelectorAll(".ui").forEach(x=>x.remove());c.querySelectorAll("[data-tt]").forEach(x=>x.removeAttribute("data-tt"));
   c.setAttribute("width",S.vb[2]);c.setAttribute("height",S.vb[3]);return'<?xml version="1.0" encoding="UTF-8"?>\n'+new XMLSerializer().serializeToString(c)}
 const csv=rows=>rows.map(r=>r.map(v=>{v=String(v??"");return/[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}).join(",")).join("\n")+"\n";
