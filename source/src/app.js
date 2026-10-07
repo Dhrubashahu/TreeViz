@@ -693,7 +693,11 @@ function freqRowsFlat(){const ff=filteredFreq(),out=[];for(const[node,m]of ff)fo
 function tipOrder(){const a=[];(function w(n){if(isTip(n))a.push(n);else n.children.forEach(w)})(S.root);return a}
 
 /* ---------------------------------------------------------------- export */
-function dl(name,data,type){const b=data instanceof Blob?data:new Blob([data],{type});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast("Saved "+name)}
+let _dlNS;async function dlNS(){if(_dlNS!==undefined)return _dlNS;try{_dlNS=(window.claude&&typeof window.claude.use==="function")?await window.claude.use("downloads"):null}catch(e){_dlNS=null}return _dlNS}
+async function dl(name,data,type){const ns=await dlNS();
+  if(ns){const fn=/\.(gif|png|jpe?g|webp|txt|json|md|csv|html|svg|pdf|xlsx|zip)$/i.test(name)?name:name+".txt";
+    try{await ns.save({filename:fn,data});toast("Saved "+fn)}catch(e){if(!e||e.code!=="declined")toast("Could not save "+fn+(e&&e.message?": "+e.message:""),5000)}return}
+  const b=data instanceof Blob?data:new Blob([data],{type});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast("Saved "+name)}
 function svgString(){const c=$("svg").cloneNode(true);c.querySelectorAll(".ui").forEach(x=>x.remove());c.querySelectorAll("[data-tt]").forEach(x=>x.removeAttribute("data-tt"));
   c.setAttribute("width",S.vb[2]);c.setAttribute("height",S.vb[3]);return'<?xml version="1.0" encoding="UTF-8"?>\n'+new XMLSerializer().serializeToString(c)}
 const csv=rows=>rows.map(r=>r.map(v=>{v=String(v??"");return/[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}).join(",")).join("\n")+"\n";
