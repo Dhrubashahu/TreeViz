@@ -1,0 +1,492 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TreeViz</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;font:12.5px/1.35 -apple-system,"Segoe UI",Helvetica,Arial,sans-serif;color:#222;background:#fff}
+#app{display:flex;height:100vh;border:1px solid #d9dde3;border-radius:6px;overflow:hidden}
+#side{width:310px;min-width:310px;overflow-y:auto;background:#f7f8fa;border-right:1px solid #d9dde3;padding:6px}
+#main{flex:1;display:flex;flex-direction:column;min-width:0}
+#bar{padding:5px 8px;border-bottom:1px solid #e2e5ea;background:#fff;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+#info{flex:1;color:#444;min-width:200px}
+#wrap{flex:1;overflow:auto;background:#fff;position:relative}
+details{background:#fff;border:1px solid #dfe3e8;border-radius:6px;margin-bottom:6px}
+summary{cursor:pointer;padding:6px 8px;font-weight:600;font-size:12.5px}
+.pb{padding:4px 8px 8px;display:flex;flex-direction:column;gap:5px}
+.row{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.row label{color:#555;min-width:0}
+button{font:inherit;padding:3px 8px;border:1px solid #b9c0ca;background:#fff;border-radius:4px;cursor:pointer}
+button:hover{background:#eef3fb;border-color:#7da2d6}
+button.p{background:#2563eb;color:#fff;border-color:#1d4ed8}
+button.p:hover{background:#1d4ed8}
+button.d{color:#b42318;border-color:#e4b4b0}
+input[type=text],input[type=number],select{font:inherit;padding:2px 4px;border:1px solid #b9c0ca;border-radius:4px;min-width:0}
+input[type=text]{flex:1}
+input[type=number]{width:62px}
+input[type=color]{width:30px;height:24px;padding:0;border:1px solid #b9c0ca;border-radius:4px;background:#fff}
+input[type=range]{flex:1;min-width:80px}
+select{max-width:100%}
+.chk{max-height:120px;overflow:auto;border:1px solid #e1e4e8;border-radius:4px;padding:3px 5px;background:#fcfcfd}
+.chk label{display:block;white-space:nowrap}
+.sw{display:flex;align-items:center;gap:6px;margin:1px 0}
+.muted{color:#777}
+svg text{user-select:none}
+#toast{position:absolute;right:10px;top:8px;background:#1f2937;color:#fff;padding:5px 10px;border-radius:5px;opacity:0;transition:opacity .25s;pointer-events:none;z-index:5}
+</style></head>
+<body>
+<div id="app">
+ <div id="side">
+  <details open><summary>1. Edit selected branch / clade</summary><div class="pb">
+    <div class="muted" id="selinfo">Click a branch, node or tip. Ctrl/Shift+click adds to the selection.</div>
+    <div class="row"><input type="text" id="rn" placeholder="rename tip / node label"><button id="rnb">Rename</button></div>
+    <div class="row"><input type="text" id="clt" placeholder="clade label (bracket text)"><button id="clb">Set</button></div>
+    <div class="row"><label>Branch length</label><input type="number" id="bl" step="any"><button id="blb">Set</button></div>
+    <div class="row"><b>Root</b></div>
+    <div class="row"><button class="p" id="rr">Reroot here</button><label>at</label><input type="number" id="rf" value="0.5" min="0" max="1" step="0.1"><span class="muted">of branch</span></div>
+    <div class="row"><button id="rmrca">Reroot at MRCA of selection</button><button id="rmid">Midpoint root</button></div>
+    <div class="row"><b>Structure</b></div>
+    <div class="row"><button id="col">Collapse / expand</button><button id="flip">Flip</button><button id="mirror">Mirror clade</button></div>
+    <div class="row"><button class="d" id="prune">Prune (delete)</button><button id="keep">Keep only selected</button><button id="subroot">Make subtree root</button></div>
+    <div class="row"><button id="selclade">Select clade</button><button id="seltips">Select tips</button><button id="clear">Clear</button></div>
+    <div class="row"><b>Colour</b></div>
+    <div class="row"><input type="color" id="bc" value="#e11d48"><label>width</label><input type="number" id="bw" value="3" min="0.5" max="12" step="0.5"></div>
+    <div class="row"><button id="bcb">Branch</button><button id="bcc">Whole clade</button><button id="bcr">Reset</button></div>
+    <div class="row"><input type="color" id="hc" value="#fde68a"><button id="hcb">Highlight clade</button><button id="hcr">Remove</button></div>
+    <div class="row"><input type="color" id="tc" value="#2563eb"><button id="tcb">Tip label colour</button><button id="tcr">Reset</button></div>
+    <div class="row"><b>Whole tree</b></div>
+    <div class="row"><button id="lad1">Ladderize ↑</button><button id="lad2">Ladderize ↓</button><button id="expall">Expand all</button><button id="resetc">Clear all colours</button></div>
+  </div></details>
+  <details open><summary>2. Find / select</summary><div class="pb">
+    <div class="row"><input type="text" id="srch" placeholder="search tip name (text or /regex/)"><button id="srchb">Select</button></div>
+    <div class="row"><select id="mcol" style="flex:1"></select><select id="mval" style="flex:1"></select></div>
+    <div class="row"><button id="mrep">Select matching</button><button id="madd">Add to selection</button></div>
+  </div></details>
+  <details open><summary>3. Display</summary><div class="pb">
+    <div class="row"><label>Layout</label><select id="layout"><option value="phylo">Phylogram (branch lengths)</option><option value="clado">Cladogram</option></select></div>
+    <div class="row"><label>Tree width</label><input type="range" id="tw" min="100" max="1400" value="520"></div>
+    <div class="row"><label>Row height</label><input type="range" id="rh" min="6" max="40" value="15"></div>
+    <div class="row"><label>Font size</label><input type="range" id="fs" min="6" max="28" value="12"></div>
+    <div class="row"><label>Line width</label><input type="range" id="lw" min="0.5" max="6" step="0.5" value="1.5"></div>
+    <div class="row"><label>Tip label</label><select id="lsrc" style="flex:1"></select></div>
+    <div class="row"><label><input type="checkbox" id="showtips" checked> tip labels</label><label><input type="checkbox" id="align" checked> align tips</label><label><input type="checkbox" id="dots"> node dots</label></div>
+    <div class="row"><label><input type="checkbox" id="sup" checked> support/labels ≥</label><input type="number" id="supmin" value="0" step="any"><label><input type="checkbox" id="scale" checked> scale bar</label></div>
+    <div class="row"><label><input type="checkbox" id="legend" checked> legend in figure</label></div>
+  </div></details>
+  <details open><summary>4. Colour tips by metadata</summary><div class="pb">
+    <div class="row"><label>Tip colour</label><select id="cby" style="flex:1"></select></div>
+    <div class="row"><label><input type="checkbox" id="clab" checked> colour label text too</label></div>
+    <div class="row"><label>Colour strips (next to tips)</label></div>
+    <div class="chk" id="strips"><span class="muted">no metadata loaded</span></div>
+    <div class="row"><label>Edit colours of</label><select id="ecol" style="flex:1"></select></div>
+    <div id="ecols"></div>
+  </div></details>
+  <details open><summary>5. Frequency table</summary><div class="pb">
+    <div class="chk" id="fcols"><span class="muted">no frequency table loaded</span></div>
+    <div class="row"><button id="fall">All</button><button id="fnone">None</button>
+      <select id="fmode"><option value="stack">Stacked bars</option><option value="heat">Heatmap</option></select></div>
+    <div class="row"><label><input type="checkbox" id="fnorm" checked> normalise each row to 100%</label></div>
+    <div class="row"><label>Bar width</label><input type="range" id="fw" min="40" max="500" value="160"></div>
+  </div></details>
+  <details><summary>6. Export</summary><div class="pb">
+    <div class="row"><button class="p" id="exnwk">Newick</button><button id="exann">Newick + colours (FigTree)</button></div>
+    <div class="row"><button id="exsvg">SVG</button><button id="expng">PNG</button><button id="excsv">Tip table CSV</button></div>
+    <div class="muted">Downloads can also be taken from the “Edited tree / Export” tab below the viewer.</div>
+  </div></details>
+ </div>
+ <div id="main">
+  <div id="bar"><button id="undo">↶ Undo</button><button id="redo">↷ Redo</button><span id="info"></span><button id="zin">＋</button><button id="zout">－</button><button id="fit">Fit</button></div>
+  <div id="wrap"><div id="toast"></div><svg id="svg" xmlns="http://www.w3.org/2000/svg"></svg></div>
+ </div>
+</div>
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const PAL=["#4e79a7","#f28e2b","#e15759","#76b7b2","#59a14f","#edc948","#b07aa1","#ff9da7","#9c755f","#bab0ac","#1f77b4","#d62728","#2ca02c","#9467bd","#8c564b","#17becf","#bcbd22","#e377c2","#7f7f7f","#aec7e8","#ffbb78","#98df8a","#c5b0d5","#c49c94"];
+const FONT="Helvetica, Arial, sans-serif";
+let uid=0;
+const mk=o=>Object.assign({id:++uid,name:"",orig:null,len:null,lab:"",children:[],parent:null,collapsed:false,bcolor:null,bwidth:null,hl:null,cl:"",tcolor:null},o);
+const S={root:null,sel:new Set(),undo:[],redo:[],byId:{},colors:{},fcolors:{},colType:{},
+  opts:{layout:"phylo",treeW:520,rowH:15,fs:12,lw:1.5,showTips:true,lsrc:"__name",align:true,dots:false,sup:true,supMin:0,scale:true,legend:true,cby:"",clab:true,strips:[],fcols:[],fmode:"stack",fnorm:true,fw:160},
+  meta:{columns:[],rows:{}},freq:{columns:[],rows:{}},mIdx:{},fIdx:{},sig:"",edits:0,height:860,zoom:1};
+
+/* ---------------- Newick ---------------- */
+function parseNewick(s){
+  s=s.trim();let i=0;
+  const ws=()=>{while(i<s.length&&/\s/.test(s[i]))i++};
+  const cm=()=>{let o="";ws();while(s[i]==="["){let j=s.indexOf("]",i);if(j<0)j=s.length-1;o+=s.slice(i+1,j)+" ";i=j+1;ws();}return o};
+  const label=()=>{ws();let l="";if(s[i]==="'"){i++;while(i<s.length){if(s[i]==="'"){if(s[i+1]==="'"){l+="'";i+=2;continue}i++;break}l+=s[i++]}return l}
+    while(i<s.length&&!"(),:;[".includes(s[i]))l+=s[i++];return l.trim()};
+  function node(){
+    let n=mk({}),c=cm();
+    if(s[i]==="("){i++;for(;;){const ch=node();ch.parent=n;n.children.push(ch);ws();if(s[i]===","){i++;continue}if(s[i]===")"){i++;break}throw new Error("Unexpected '"+(s[i]||"end")+"' at position "+i+" – is this a Newick tree?")}}
+    c+=cm();const l=label();c+=cm();
+    if(n.children.length)n.lab=l;else n.name=l;
+    ws();if(s[i]===":"){i++;ws();const m=s.slice(i).match(/^[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?/);if(m){n.len=parseFloat(m[0]);i+=m[0].length}c+=cm();}
+    const mc=c.match(/!color=(#[0-9a-fA-F]{6})/);if(mc)n.bcolor=mc[1];
+    return n}
+  if(!s.length)throw new Error("Empty tree file");
+  const r=node();r.len=null;return r}
+const nq=x=>/[\s(),:;\[\]']/.test(x)?"'"+x.replace(/'/g,"''")+"'":x;
+const fmtL=x=>String(parseFloat(Number(x).toPrecision(8)));
+function toNewick(n,ann,isRoot=true){
+  let s=n.children.length?"("+n.children.map(c=>toNewick(c,ann,false)).join(",")+")"+(n.lab?nq(n.lab):""):nq(n.name);
+  if(ann&&n.bcolor)s+="[&!color="+n.bcolor+"]";
+  if(!isRoot&&n.len!=null)s+=":"+fmtL(n.len);
+  return isRoot?s+";":s}
+
+/* ---------------- tree utils ---------------- */
+const isTip=n=>!n.children.length;
+function tipsOf(n,a=[]){if(isTip(n))a.push(n);else n.children.forEach(c=>tipsOf(c,a));return a}
+function allNodes(n=S.root,a=[]){a.push(n);n.children.forEach(c=>allNodes(c,a));return a}
+function nTips(n){return isTip(n)?1:n.children.reduce((s,c)=>s+nTips(c),0)}
+function cleanup(){ // merge single-child internal nodes
+  (function f(n){n.children.forEach(f);
+    if(n.children.length===1&&n.parent){const c=n.children[0],p=n.parent,k=p.children.indexOf(n);
+      c.len=(c.len==null&&n.len==null)?null:(c.len||0)+(n.len||0);p.children[k]=c;c.parent=p;}
+  })(S.root);
+  while(S.root.children.length===1){const c=S.root.children[0];c.parent=null;c.len=null;S.root=c}
+}
+function ser(n){return{i:n.id,name:n.name,orig:n.orig,len:n.len,lab:n.lab,col:n.collapsed,bc:n.bcolor,bw:n.bwidth,hl:n.hl,cl:n.cl,tc:n.tcolor,c:n.children.map(ser)}}
+function de(o,p){const n={id:o.i,name:o.name,orig:o.orig,len:o.len,lab:o.lab,collapsed:o.col,bcolor:o.bc,bwidth:o.bw,hl:o.hl,cl:o.cl,tcolor:o.tc,parent:p,children:[]};n.children=o.c.map(c=>de(c,n));return n}
+const snap=()=>JSON.stringify(ser(S.root));
+function pushUndo(){S.undo.push(snap());if(S.undo.length>100)S.undo.shift();S.redo=[]}
+function doUndo(){if(!S.undo.length)return;S.redo.push(snap());S.root=de(JSON.parse(S.undo.pop()),null);S.sel.clear();changed(true)}
+function doRedo(){if(!S.redo.length)return;S.undo.push(snap());S.root=de(JSON.parse(S.redo.pop()),null);S.sel.clear();changed(true)}
+function edit(fn){pushUndo();fn();S.edits++;changed()}
+function changed(skipEdit){render();updInfo();emit()}
+
+function reroot(n,frac){
+  if(!n.parent)return toast("That is already the root.");
+  const path=[];for(let x=n;x;x=x.parent)path.push(x);const k=path.length-1;
+  const E=path.slice(0,k).map(x=>({len:x.len,lab:x.lab,bc:x.bcolor,bw:x.bwidth}));
+  for(let i=0;i<k;i++)path[i+1].children=path[i+1].children.filter(c=>c!==path[i]);
+  const R=mk({});R.children=[n,path[1]];n.parent=R;path[1].parent=R;
+  const L=E[0].len;n.len=L==null?null:L*frac;path[1].len=L==null?null:L*(1-frac);
+  path[1].lab=E[0].lab;path[1].bcolor=E[0].bc;path[1].bwidth=E[0].bw;
+  for(let i=1;i<k;i++){const q=path[i+1];path[i].children.push(q);q.parent=path[i];const e=E[i];q.len=e.len;q.lab=e.lab;q.bcolor=e.bc;q.bwidth=e.bw}
+  R.len=null;R.lab="";S.root=R;
+  // old root may now be a single-child node
+  cleanup();
+}
+function midpointRoot(){
+  const nodes=allNodes();const adj=new Map(nodes.map(n=>[n,[]]));
+  nodes.forEach(n=>{if(n.parent){const w=n.len==null?1:n.len;adj.get(n).push([n.parent,w,n]);adj.get(n.parent).push([n,w,n])}});
+  const far=(s)=>{const d=new Map([[s,0]]),pr=new Map([[s,null]]),q=[s];let best=s;
+    while(q.length){const u=q.shift();for(const[v,w,e]of adj.get(u)){if(!d.has(v)){d.set(v,d.get(u)+w);pr.set(v,[u,e,w]);q.push(v);if(isTip(v)&&d.get(v)>d.get(best))best=v}}}
+    if(!isTip(best)){for(const[v,dd]of d)if(isTip(v)&&dd>=d.get(best))best=v}
+    return{best,d,pr}};
+  const t0=tipsOf(S.root)[0];const a=far(t0).best;const r=far(a);const b=r.best,D=r.d.get(b);
+  // walk from b back to a
+  let cur=b,half=D/2,acc=0;
+  while(cur!==a){const[u,e,w]=r.pr.get(cur);const dv=r.d.get(cur); // dist from a to cur
+    if(dv-w<=half&&dv>=half){ // edge e between u (nearer a) and cur contains midpoint; distance from a end = half-(dv-w)
+      const fromU=half-(dv-w);let frac;
+      const child=e;
+      // frac = fraction of edge assigned to the child side
+      if(child===cur)frac=w?(w-fromU)/w:.5;else frac=w?fromU/w:.5;
+      if(!child.parent)return;
+      if(child.parent===S.root&&S.root.children.length===2){const sib=S.root.children.find(c=>c!==child),tot=(child.len||0)+(sib.len||0);child.len=tot*frac;sib.len=tot*(1-frac);return}
+      reroot(child,Math.min(1,Math.max(0,frac)));return}
+    cur=u}
+}
+function mrca(ns){
+  if(!ns.length)return null;const chain=n=>{const a=[];for(;n;n=n.parent)a.push(n);return a};
+  let c=chain(ns[0]);for(const n of ns.slice(1)){const s=new Set(chain(n));c=c.filter(x=>s.has(x))}return c[0]}
+function ladderize(n,asc){n.children.forEach(c=>ladderize(c,asc));n.children.sort((a,b)=>asc?nTips(a)-nTips(b):nTips(b)-nTips(a))}
+
+/* ---------------- metadata ---------------- */
+function lookup(idx,rows,n){if(!rows)return null;const k=n.orig!=null?n.orig:n.name;return rows[k]||rows[idx[String(k).toLowerCase().trim()]]||null}
+const metaOf=n=>lookup(S.mIdx,S.meta.rows,n),freqOf=n=>lookup(S.fIdx,S.freq.rows,n);
+function buildIdx(rows){const i={};Object.keys(rows).forEach(k=>i[k.toLowerCase().trim()]=k);return i}
+function setupColors(){
+  S.colors={};S.colType={};
+  S.meta.columns.forEach(c=>{
+    const vals=[...new Set(Object.values(S.meta.rows).map(r=>r[c]).filter(v=>v!==undefined&&v!==null&&v!==""))];
+    const nums=vals.map(Number);const isNum=vals.length>12&&nums.every(v=>!isNaN(v));
+    if(isNum){S.colType[c]={t:"num",min:Math.min(...nums),max:Math.max(...nums)}}
+    else{S.colType[c]={t:"cat"};vals.sort((a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true}));S.colors[c]={};vals.forEach((v,i)=>S.colors[c][v]=PAL[i%PAL.length])}});
+  S.fcolors={};S.freq.columns.forEach((c,i)=>S.fcolors[c]=PAL[i%PAL.length]);
+}
+const ramp=t=>{t=Math.max(0,Math.min(1,t));const a=[247,251,255],b=[8,81,156];return"rgb("+a.map((x,i)=>Math.round(x+(b[i]-x)*t)).join(",")+")"}
+const vir=t=>{const st=[[68,1,84],[59,82,139],[33,145,140],[94,201,98],[253,231,37]];t=Math.max(0,Math.min(.9999,t))*4;const i=Math.floor(t),f=t-i;return"rgb("+st[i].map((x,j)=>Math.round(x+(st[i+1][j]-x)*f)).join(",")+")"}
+function colorOf(col,v){if(v===undefined||v===null||v==="")return"#e5e7eb";const ct=S.colType[col];if(!ct)return"#ccc";
+  if(ct.t==="num"){const x=Number(v);return isNaN(x)?"#e5e7eb":vir((x-ct.min)/((ct.max-ct.min)||1))}
+  return S.colors[col][v]||"#ccc"}
+const esc=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+function tipText(n){const o=S.opts;if(o.lsrc==="__name")return n.name;const m=metaOf(n);return m&&m[o.lsrc]!==undefined&&m[o.lsrc]!==""?String(m[o.lsrc]):n.name}
+
+/* ---------------- layout + render ---------------- */
+let G={};
+function layout(){
+  const o=S.opts;S.byId={};let r=0;
+  const clado=o.layout==="clado";
+  (function pre(n,x){S.byId[n.id]=n;n.x0=clado?0:x+(n.len||0);if(!n.parent)n.x0=0;n.children.forEach(c=>pre(c,n.x0))})(S.root,0);
+  (function h(n){n.h=isTip(n)?0:1+Math.max(...n.children.map(h));return n.h})(S.root);
+  if(clado){const H=S.root.h||1;allNodes().forEach(n=>n.x0=H-n.h)}
+  const vis=[];
+  (function walk(n){if(isTip(n)||n.collapsed){n.row=r++;n.y=n.row;vis.push(n);return}
+    n.children.forEach(walk);n.y=(n.children[0].y+n.children[n.children.length-1].y)/2})(S.root);
+  (function xm(n){n.xmax=isTip(n)?n.x0:Math.max(...n.children.map(xm));return n.xmax})(S.root);
+  G={vis,rows:r,maxX:S.root.xmax||1}}
+function rowRange(n){if(isTip(n)||n.collapsed)return[n.row,n.row];return[rowRange(n.children[0])[0],rowRange(n.children[n.children.length-1])[1]]}
+function niceLen(v){const p=Math.pow(10,Math.floor(Math.log10(v)));const m=v/p;return(m>=5?5:m>=2?2:1)*p}
+
+function render(){
+  if(!S.root)return;layout();
+  const o=S.opts,fs=o.fs,rh=o.rowH,L=24,vis=G.vis;
+  const sx=o.treeW/G.maxX;
+  const X=n=>L+n.x0*sx,Y=n=>T+n.y*rh+rh/2;
+  const stripCols=o.strips.filter(c=>S.meta.columns.includes(c));
+  const fcols=o.fcols.filter(c=>S.freq.columns.includes(c));
+  const hasCols=stripCols.length||fcols.length;
+  const T=hasCols?120:30;
+  const labW=o.showTips?Math.max(0,...vis.map(n=>(isTip(n)?tipText(n):(n.cl||n.name||nTips(n)+" tips")).length))*fs*0.58:0;
+  const xAlign=L+G.maxX*sx;
+  const xCol0=xAlign+(o.showTips?10+labW+8:14);
+  let cx=xCol0;const stripX={};
+  stripCols.forEach(c=>{stripX[c]=cx;cx+=Math.max(10,rh-1)+3});
+  if(stripCols.length)cx+=8;
+  const fx0=cx;let fW=0;
+  if(fcols.length){fW=o.fmode==="stack"?o.fw:fcols.length*Math.max(10,rh-1);cx+=fW}
+  const rightEdge=cx;
+  const treeBottom=T+G.rows*rh;
+  // legend blocks
+  const blocks=[];
+  if(o.legend){const used=new Set([...(o.cby?[o.cby]:[]),...stripCols]);
+    used.forEach(c=>{const ct=S.colType[c];if(!ct)return;
+      if(ct.t==="num")blocks.push({title:c,grad:[ct.min,ct.max]});
+      else blocks.push({title:c,items:Object.entries(S.colors[c]).slice(0,40).map(([k,v])=>({label:k,color:v}))})});
+    if(fcols.length)blocks.push({title:"Frequency",items:fcols.map(c=>({label:c,color:S.fcolors[c]}))})}
+  const W=Math.max(rightEdge+90,520);
+  let legendSvg="",ly=0;
+  if(blocks.length){let bx=L,by=treeBottom+(o.scale?60:30),rowMax=0;
+    blocks.forEach(b=>{const bw=170,bh=18+(b.items?b.items.length*14:30);
+      if(bx+bw>W){bx=L;by+=rowMax+14;rowMax=0}
+      legendSvg+=`<g transform="translate(${bx},${by})"><text x="0" y="0" font-size="${fs}" font-weight="bold" font-family="${FONT}">${esc(b.title)}</text>`;
+      if(b.items)b.items.forEach((it,i)=>{legendSvg+=`<rect x="0" y="${6+i*14}" width="10" height="10" fill="${it.color}" stroke="#555" stroke-width=".4"/><text x="15" y="${15+i*14}" font-size="${Math.max(9,fs-2)}" font-family="${FONT}">${esc(it.label)}</text>`});
+      else{const id="g"+Math.random().toString(36).slice(2,7);
+        legendSvg+=`<defs><linearGradient id="${id}">${[0,.25,.5,.75,1].map(t=>`<stop offset="${t*100}%" stop-color="${vir(t)}"/>`).join("")}</linearGradient></defs><rect x="0" y="8" width="120" height="10" fill="url(#${id})"/><text x="0" y="30" font-size="${fs-2}" font-family="${FONT}">${+b.grad[0].toPrecision(4)}</text><text x="120" y="30" text-anchor="end" font-size="${fs-2}" font-family="${FONT}">${+b.grad[1].toPrecision(4)}</text>`}
+      legendSvg+="</g>";rowMax=Math.max(rowMax,bh);bx+=bw});
+    ly=by+rowMax+10}
+  const H=Math.max(treeBottom+(o.scale?60:30),ly)+10;
+
+  let hl="",br="",hit="",nd="",tx="",cols="",ui="",lab="";
+  // highlights
+  allNodes().forEach(n=>{if(!n.hl||!S.byId[n.id])return;if(!isVisible(n))return;const[a,b]=rowRange(n);
+    hl+=`<rect x="${X(n)-5}" y="${T+a*rh}" width="${rightEdge-X(n)+10}" height="${(b-a+1)*rh}" fill="${n.hl}" fill-opacity=".45" rx="3"/>`});
+  // branches
+  (function draw(n){
+    if(n.parent){const px=X(n.parent),py=Y(n.parent),x=X(n),y=Y(n);
+      const col=n.bcolor||"#222",w=n.bwidth||o.lw;
+      const selB=S.sel.has(n.id);
+      if(selB)ui+=`<path class="ui" d="M${px},${py}V${y}H${x}" fill="none" stroke="#f59e0b" stroke-opacity=".55" stroke-width="${w+6}" stroke-linecap="round"/>`;
+      br+=`<path d="M${px},${py}V${y}H${x}" fill="none" stroke="${col}" stroke-width="${w}" stroke-linejoin="round" stroke-linecap="round"/>`;
+      hit+=`<path class="ui" data-id="${n.id}" d="M${px},${y}H${x}" stroke="transparent" stroke-width="${Math.max(10,rh*.8)}" fill="none" style="cursor:pointer"/>`;
+    }else{br+=`<path d="M${L-12},${Y(n)}H${L}" stroke="${n.bcolor||"#222"}" stroke-width="${o.lw}"/>`}
+    if(!n.parent&&S.sel.has(n.id))ui+=`<circle class="ui" cx="${L}" cy="${Y(n)}" r="7" fill="#f59e0b" fill-opacity=".6"/>`;
+    if(isTip(n)||n.collapsed)return;
+    // internal node
+    const x=X(n),y=Y(n);
+    if(o.dots)nd+=`<circle cx="${x}" cy="${y}" r="3" fill="#fff" stroke="#222" stroke-width="1"/>`;
+    hit+=`<circle class="ui" data-id="${n.id}" cx="${x}" cy="${y}" r="${Math.max(4,o.lw+2)}" fill="${S.sel.has(n.id)?"#f59e0b":"transparent"}" fill-opacity=".8" style="cursor:pointer"/>`;
+    if(o.sup&&n.lab&&n.parent){const v=parseFloat(n.lab);if(isNaN(v)||v>=o.supMin)lab+=`<text x="${x-3}" y="${y-3}" text-anchor="end" font-size="${Math.max(7,fs-3)}" fill="#6b7280" font-family="${FONT}">${esc(n.lab)}</text>`}
+    n.children.forEach(draw);
+  })(S.root);
+  // tips & collapsed
+  const maxFreq=(()=>{let m=0;vis.forEach(n=>{if(!isTip(n))return;const f=freqOf(n);if(f)m=Math.max(m,fcols.reduce((s,c)=>s+(+f[c]||0),0))});return m})();
+  const denomG=maxFreq<=1.0001?1:maxFreq<=100.0001?100:maxFreq;
+  const heatMax=(()=>{let m=0;vis.forEach(n=>{const f=isTip(n)&&freqOf(n);if(f)fcols.forEach(c=>m=Math.max(m,+f[c]||0))});return m||1})();
+  vis.forEach(n=>{
+    const x=X(n),y=Y(n);
+    if(!isTip(n)){ // collapsed triangle
+      const x2=L+n.xmax*sx,hh=rh*.45,col=n.bcolor||"#555";
+      tx+=`<polygon points="${x},${y} ${Math.max(x2,x+8)},${y-hh} ${Math.max(x2,x+8)},${y+hh}" fill="${col}" fill-opacity=".35" stroke="${col}" stroke-width="1"/>`;
+      hit+=`<polygon class="ui" data-id="${n.id}" points="${x},${y} ${Math.max(x2,x+8)},${y-hh} ${Math.max(x2,x+8)},${y+hh}" fill="transparent" style="cursor:pointer"/>`;
+      if(S.sel.has(n.id))ui+=`<polygon class="ui" points="${x},${y} ${Math.max(x2,x+8)},${y-hh} ${Math.max(x2,x+8)},${y+hh}" fill="none" stroke="#f59e0b" stroke-width="3"/>`;
+      if(o.showTips)tx+=`<text x="${(o.align?xAlign:Math.max(x2,x+8))+8}" y="${y+fs*.35}" font-size="${fs}" font-style="italic" font-family="${FONT}" fill="#333">${esc(n.cl||n.name||"")}${(n.cl||n.name)?" ":""}<tspan fill="#888">${n.cl||n.name?"(":""}${nTips(n)} tips${n.cl||n.name?")":""}</tspan></text>`;
+      return}
+    const m=metaOf(n),f=freqOf(n);
+    const tcol=o.cby&&m?colorOf(o.cby,m[o.cby]):null;
+    const txtCol=n.tcolor||(o.clab&&tcol?tcol:"#1f2937");
+    const tip=esc(n.name)+(m?"\n"+S.meta.columns.map(c=>c+": "+(m[c]??"")).join("\n"):"");
+    if(S.sel.has(n.id))ui+=`<rect class="ui" x="${x+3}" y="${y-rh/2+1}" width="${(o.align?xAlign-x:0)+10+labW+4}" height="${rh-2}" fill="#f59e0b" fill-opacity=".3" rx="3"/>`;
+    if(o.align&&o.showTips)br+=`<path d="M${x+(tcol?5:1)},${y}H${xAlign+6}" stroke="#c7ccd4" stroke-width=".6" stroke-dasharray="1.5 2.5"/>`;
+    if(tcol)tx+=`<circle cx="${x}" cy="${y}" r="${Math.max(2.5,Math.min(rh*.32,6))}" fill="${tcol}" stroke="#333" stroke-width=".5"/>`;
+    if(o.showTips){const tx0=(o.align?xAlign:x)+8;
+      tx+=`<text x="${tx0}" y="${y+fs*.35}" font-size="${fs}" font-family="${FONT}" fill="${txtCol}"><title>${tip}</title>${esc(tipText(n))}</text>`;
+      hit+=`<rect class="ui" data-id="${n.id}" x="${tx0-2}" y="${y-rh/2}" width="${Math.max(10,tipText(n).length*fs*.58)+4}" height="${rh}" fill="transparent" style="cursor:pointer"/>`}
+    else hit+=`<circle class="ui" data-id="${n.id}" cx="${x}" cy="${y}" r="6" fill="transparent" style="cursor:pointer"/>`;
+    stripCols.forEach(c=>{const v=m?m[c]:undefined;cols+=`<rect x="${stripX[c]}" y="${y-rh/2+.5}" width="${Math.max(10,rh-1)}" height="${rh-1}" fill="${colorOf(c,v)}"><title>${esc(c)}: ${esc(v??"NA")}</title></rect>`});
+    if(fcols.length){
+      if(o.fmode==="stack"){
+        cols+=`<rect x="${fx0}" y="${y-rh/2+1}" width="${fW}" height="${rh-2}" fill="#f3f4f6"/>`;
+        if(f){const vals=fcols.map(c=>Math.max(0,+f[c]||0)),sum=vals.reduce((a,b)=>a+b,0),den=o.fnorm?(sum||1):denomG;let xx=fx0;
+          vals.forEach((v,i)=>{const w=v/den*fW;if(w>0){cols+=`<rect x="${xx}" y="${y-rh/2+1}" width="${w}" height="${rh-2}" fill="${S.fcolors[fcols[i]]}"><title>${esc(fcols[i])}: ${+v.toPrecision(4)}</title></rect>`;xx+=w}})}}
+      else{const cw=Math.max(10,rh-1);fcols.forEach((c,i)=>{const v=f?(+f[c]||0):0;cols+=`<rect x="${fx0+i*cw}" y="${y-rh/2+.5}" width="${cw}" height="${rh-1}" fill="${f?ramp(v/heatMax):"#f3f4f6"}"><title>${esc(c)}: ${+v.toPrecision(4)}</title></rect>`})}}
+  });
+  // column headers
+  let head="";
+  const hdr=(x,t)=>`<text transform="translate(${x},${T-6}) rotate(-55)" font-size="${Math.max(8,fs-1)}" font-family="${FONT}" fill="#333">${esc(t)}</text>`;
+  stripCols.forEach(c=>head+=hdr(stripX[c]+3,c));
+  if(fcols.length){if(o.fmode==="stack")head+=`<text x="${fx0}" y="${T-8}" font-size="${fs}" font-weight="bold" font-family="${FONT}">Frequency${o.fnorm?" (row-normalised)":""}</text>`;
+    else fcols.forEach((c,i)=>head+=hdr(fx0+i*Math.max(10,rh-1)+3,c))}
+  // clade labels
+  allNodes().forEach(n=>{if(!n.cl||!isVisible(n)||isTip(n)||n.collapsed)return;const[a,b]=rowRange(n);const x=rightEdge+8;
+    lab+=`<path d="M${x},${T+a*rh+2}V${T+(b+1)*rh-2}" stroke="#444" stroke-width="2"/><text x="${x+7}" y="${T+(a+b+1)*rh/2+fs*.35}" font-size="${fs+1}" font-family="${FONT}" font-weight="bold">${esc(n.cl)}</text>`});
+  // scale
+  let sc="";
+  if(o.scale&&o.layout==="phylo"&&G.maxX>0){const target=G.maxX*0.2,len=niceLen(target),px=len*sx,y=treeBottom+22;
+    sc=`<path d="M${L},${y}H${L+px}M${L},${y-4}V${y+4}M${L+px},${y-4}V${y+4}" stroke="#222" stroke-width="1.2"/><text x="${L+px/2}" y="${y+16}" text-anchor="middle" font-size="${fs-1}" font-family="${FONT}">${+len.toPrecision(3)}</text>`}
+  const svg=$("svg");
+  const Z=S.zoom;
+  svg.setAttribute("width",W*Z);svg.setAttribute("height",H*Z);svg.setAttribute("viewBox",`0 0 ${W} ${H}`);
+  svg.innerHTML=`<rect class="bg" x="0" y="0" width="${W}" height="${H}" fill="#fff"/>${hl}${ui}${br}${nd}${cols}${head}${tx}${lab}${sc}${legendSvg}${hit}`;
+  S.dim={W,H};
+}
+function isVisible(n){for(let p=n.parent;p;p=p.parent)if(p.collapsed)return false;return true}
+
+/* ---------------- selection / info ---------------- */
+function selNodes(){return[...S.sel].map(i=>S.byId[i]).filter(Boolean)}
+function updInfo(){
+  const ns=selNodes();let t="";
+  if(!ns.length)t="Click a branch, node or tip to select · Ctrl/Shift+click for more";
+  else if(ns.length===1){const n=ns[0];t=isTip(n)?`Tip: ${n.name}`:`Node with ${nTips(n)} tips`+(n.lab?` · label ${n.lab}`:"");if(n.len!=null)t+=` · branch length ${fmtL(n.len)}`}
+  else t=`${ns.length} nodes selected`;
+  $("selinfo").textContent=t;
+  $("info").textContent=`${tipsOf(S.root).length} tips · ${S.edits} edit${S.edits===1?"":"s"}`+(ns.length?` · ${t}`:"");
+  if(ns.length===1){$("rn").value=isTip(ns[0])?ns[0].name:ns[0].lab;$("clt").value=ns[0].cl||"";$("bl").value=ns[0].len==null?"":ns[0].len}
+  else{$("rn").value="";$("clt").value="";$("bl").value=""}
+}
+$("svg").addEventListener("click",e=>{
+  const t=e.target.closest("[data-id]");
+  if(!t){if(!e.ctrlKey&&!e.shiftKey&&!e.metaKey){S.sel.clear();render();updInfo()}return}
+  const id=+t.dataset.id;const now=Date.now();
+  if(S.lastClick&&S.lastClick.id===id&&now-S.lastClick.t<400){S.lastClick=null;const n=S.byId[id];if(n&&!isTip(n)){S.sel=new Set([id]);edit(()=>{n.collapsed=!n.collapsed});updInfo();return}}
+  S.lastClick={id,t:now};
+  if(e.ctrlKey||e.shiftKey||e.metaKey){S.sel.has(id)?S.sel.delete(id):S.sel.add(id)}else{S.sel=new Set([id])}
+  render();updInfo()});
+
+/* ---------------- actions ---------------- */
+function need(n=1){const ns=selNodes();if(ns.length<n){toast(n===1?"Select a branch, node or tip first.":"Select more nodes first.");return null}return ns}
+function descendants(n,a=[]){a.push(n);n.children.forEach(c=>descendants(c,a));return a}
+$("rr").onclick=()=>{const ns=need();if(!ns)return;const f=Math.min(1,Math.max(0,parseFloat($("rf").value)));const n=ns[0];edit(()=>reroot(n,isNaN(f)?.5:f));S.sel.clear();updInfo();render()};
+$("rmrca").onclick=()=>{const ns=need();if(!ns)return;const m=mrca(ns);if(!m||!m.parent)return toast("MRCA is already the root.");edit(()=>reroot(m,.5));S.sel.clear();updInfo();render()};
+$("rmid").onclick=()=>{edit(()=>midpointRoot());S.sel.clear();updInfo();render()};
+$("rnb").onclick=()=>{const ns=need();if(!ns)return;edit(()=>{const v=$("rn").value;ns.forEach(n=>{isTip(n)?n.name=v:n.lab=v})})};
+$("clb").onclick=()=>{const ns=need();if(!ns)return;edit(()=>ns.forEach(n=>n.cl=$("clt").value))};
+$("blb").onclick=()=>{const ns=need();if(!ns)return;const v=parseFloat($("bl").value);if(isNaN(v))return;edit(()=>ns.forEach(n=>{if(n.parent)n.len=v}))};
+$("col").onclick=()=>{const ns=need();if(!ns)return;edit(()=>ns.forEach(n=>{if(!isTip(n))n.collapsed=!n.collapsed}))};
+$("flip").onclick=()=>{const ns=need();if(!ns)return;edit(()=>ns.forEach(n=>n.children.reverse()))};
+$("mirror").onclick=()=>{const ns=need();if(!ns)return;edit(()=>ns.forEach(n=>descendants(n).forEach(d=>d.children.reverse())))};
+$("prune").onclick=()=>{const ns=need();if(!ns)return;if(ns.some(n=>!n.parent))return toast("Cannot prune the root.");
+  edit(()=>{ns.forEach(n=>{if(!n.parent&&n!==S.root)return;let x=n;while(x&&x.parent){const p=x.parent;p.children=p.children.filter(c=>c!==x);x.parent=null;if(p.children.length)break;x=p}});cleanup()});S.sel.clear();updInfo();render()};
+$("keep").onclick=()=>{const ns=need();if(!ns)return;const keep=new Set();ns.forEach(n=>tipsOf(n).forEach(t=>keep.add(t.id)));
+  edit(()=>{(function rec(n){if(isTip(n))return keep.has(n.id);n.children=n.children.filter(rec);return n.children.length>0})(S.root);cleanup()});S.sel.clear();updInfo();render()};
+$("subroot").onclick=()=>{const ns=need();if(!ns)return;const n=ns[0];if(!n.parent)return;edit(()=>{n.parent=null;n.len=null;S.root=n});S.sel.clear();updInfo();render()};
+$("selclade").onclick=()=>{const ns=need();if(!ns)return;const s=new Set();ns.forEach(n=>descendants(n).forEach(d=>s.add(d.id)));S.sel=s;render();updInfo()};
+$("seltips").onclick=()=>{const ns=need();if(!ns)return;const s=new Set();ns.forEach(n=>tipsOf(n).forEach(d=>s.add(d.id)));S.sel=s;render();updInfo()};
+$("clear").onclick=()=>{S.sel.clear();render();updInfo()};
+const bcol=()=>$("bc").value,bwid=()=>parseFloat($("bw").value)||3;
+$("bcb").onclick=()=>{const ns=need();if(!ns)return;edit(()=>ns.forEach(n=>{n.bcolor=bcol();n.bwidth=bwid()}))};
+$("bcc").onclick=()=>{const ns=need();if(!ns)return;edit(()=>ns.forEach(n=>descendants(n).forEach(d=>{d.bcolor=bcol();d.bwidth=bwid()})))};
+$("bcr").onclick=()=>{const ns=need();if(!ns)return;edit(()=>ns.forEach(n=>descendants(n).forEach(d=>{d.bcolor=null;d.bwidth=null})))};
+$("hcb").onclick=()=>{const ns=need();if(!ns)return;edit(()=>ns.forEach(n=>n.hl=$("hc").value))};
+$("hcr").onclick=()=>{const ns=need();if(!ns)return;edit(()=>ns.forEach(n=>n.hl=null))};
+$("tcb").onclick=()=>{const ns=need();if(!ns)return;edit(()=>ns.forEach(n=>tipsOf(n).forEach(t=>t.tcolor=$("tc").value)))};
+$("tcr").onclick=()=>{const ns=need();if(!ns)return;edit(()=>ns.forEach(n=>tipsOf(n).forEach(t=>t.tcolor=null)))};
+$("lad1").onclick=()=>edit(()=>ladderize(S.root,true));
+$("lad2").onclick=()=>edit(()=>ladderize(S.root,false));
+$("expall").onclick=()=>edit(()=>allNodes().forEach(n=>n.collapsed=false));
+$("resetc").onclick=()=>edit(()=>allNodes().forEach(n=>{n.bcolor=null;n.bwidth=null;n.hl=null;n.tcolor=null}));
+$("undo").onclick=doUndo;$("redo").onclick=doRedo;
+$("zin").onclick=()=>{S.zoom=Math.min(4,S.zoom*1.2);render()};$("zout").onclick=()=>{S.zoom=Math.max(.2,S.zoom/1.2);render()};
+$("fit").onclick=()=>{const w=$("wrap");S.zoom=Math.min(2,Math.max(.2,Math.min((w.clientWidth-10)/S.dim.W,(w.clientHeight-10)/S.dim.H)));render()};
+document.addEventListener("keydown",e=>{
+  if(/INPUT|SELECT|TEXTAREA/.test(e.target.tagName))return;
+  if((e.ctrlKey||e.metaKey)&&e.key==="z"){e.preventDefault();doUndo()}
+  else if((e.ctrlKey||e.metaKey)&&(e.key==="y"||(e.shiftKey&&e.key==="Z"))){e.preventDefault();doRedo()}
+  else if(e.key==="Delete"||e.key==="Backspace"){$("prune").click()}
+  else if(e.key==="r"){$("rr").click()}
+  else if(e.key==="Escape"){$("clear").click()}});
+// search + metadata select
+function selectBy(fn,add){const s=add?new Set(S.sel):new Set();tipsOf(S.root).forEach(t=>{if(fn(t))s.add(t.id)});S.sel=s;render();updInfo();toast(s.size+" selected")}
+$("srchb").onclick=()=>{let q=$("srch").value.trim();if(!q)return;let re;
+  const m=q.match(/^\/(.+)\/([a-z]*)$/);try{re=m?new RegExp(m[1],m[2]||"i"):null}catch(e){return toast("Bad regex")}
+  selectBy(t=>re?re.test(t.name):t.name.toLowerCase().includes(q.toLowerCase()))};
+$("srch").addEventListener("keydown",e=>{if(e.key==="Enter")$("srchb").click()});
+function fillMval(){const c=$("mcol").value;const vals=[...new Set(Object.values(S.meta.rows).map(r=>r[c]).filter(v=>v!==undefined&&v!==""))].sort((a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true}));
+  $("mval").innerHTML=vals.map(v=>`<option>${esc(v)}</option>`).join("")}
+$("mcol").onchange=fillMval;
+const mm=(add)=>()=>{const c=$("mcol").value,v=$("mval").value;if(!c)return;selectBy(t=>{const m=metaOf(t);return m&&String(m[c])===v},add)};
+$("mrep").onclick=mm(false);$("madd").onclick=mm(true);
+
+/* ---------------- display controls ---------------- */
+const bind=(id,key,type)=>{const el=$(id);const h=()=>{S.opts[key]=type==="b"?el.checked:type==="n"?parseFloat(el.value):el.value;render()};el.addEventListener("input",h);el.addEventListener("change",h)};
+bind("layout","layout");bind("tw","treeW","n");bind("rh","rowH","n");bind("fs","fs","n");bind("lw","lw","n");bind("lsrc","lsrc");
+bind("showtips","showTips","b");bind("align","align","b");bind("dots","dots","b");bind("sup","sup","b");bind("supmin","supMin","n");bind("scale","scale","b");bind("legend","legend","b");
+bind("cby","cby");bind("clab","clab","b");bind("fmode","fmode");bind("fnorm","fnorm","b");bind("fw","fw","n");
+function fillChecks(id,cols,key){const el=$(id);if(!cols.length){el.innerHTML='<span class="muted">none loaded</span>';return}
+  el.innerHTML=cols.map((c,i)=>`<label><input type="checkbox" data-c="${i}"> ${esc(c)}</label>`).join("");
+  el.querySelectorAll("input").forEach(cb=>cb.onchange=()=>{S.opts[key]=[...el.querySelectorAll("input:checked")].map(x=>cols[+x.dataset.c]);render()})}
+function setChecks(id,cols,sel){$(id).querySelectorAll("input").forEach(cb=>cb.checked=sel.includes(cols[+cb.dataset.c]))}
+$("fall").onclick=()=>{S.opts.fcols=[...S.freq.columns];setChecks("fcols",S.freq.columns,S.opts.fcols);render()};
+$("fnone").onclick=()=>{S.opts.fcols=[];setChecks("fcols",S.freq.columns,[]);render()};
+function fillEcol(){const opts=[...S.meta.columns.filter(c=>S.colType[c]&&S.colType[c].t==="cat"),...(S.freq.columns.length?["__freq__"]:[])];
+  $("ecol").innerHTML=opts.map(c=>`<option value="${esc(c)}">${c==="__freq__"?"Frequency columns":esc(c)}</option>`).join("");showEcol()}
+function showEcol(){const c=$("ecol").value;const box=$("ecols");box.innerHTML="";if(!c)return;
+  const m=c==="__freq__"?S.fcolors:S.colors[c];
+  Object.keys(m||{}).slice(0,60).forEach(k=>{const d=document.createElement("div");d.className="sw";d.innerHTML=`<input type="color" value="${m[k].length===7?m[k]:"#888888"}"><span>${esc(k)}</span>`;
+    d.firstChild.oninput=ev=>{m[k]=ev.target.value;render()};box.appendChild(d)})}
+$("ecol").onchange=showEcol;
+
+/* ---------------- export ---------------- */
+function dl(name,text,type){try{const b=new Blob([text],{type});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),2000);toast("Saved "+name)}catch(e){toast("Download blocked – use the Export tab below")}}
+$("exnwk").onclick=()=>dl("tree_edited.nwk",toNewick(S.root,false)+"\n","text/plain");
+$("exann").onclick=()=>dl("tree_edited_figtree.nex","#NEXUS\nbegin trees;\n\ttree tree1 = [&R] "+toNewick(S.root,true)+"\nend;\n","text/plain");
+function svgString(){const c=$("svg").cloneNode(true);c.querySelectorAll(".ui").forEach(x=>x.remove());c.removeAttribute("style");
+  c.setAttribute("width",S.dim.W);c.setAttribute("height",S.dim.H);return'<?xml version="1.0" encoding="UTF-8"?>\n'+new XMLSerializer().serializeToString(c)}
+$("exsvg").onclick=()=>dl("tree.svg",svgString(),"image/svg+xml");
+$("expng").onclick=()=>{const s=svgString();const img=new Image();img.onload=()=>{const sc=2,cv=document.createElement("canvas");cv.width=S.dim.W*sc;cv.height=S.dim.H*sc;const x=cv.getContext("2d");x.fillStyle="#fff";x.fillRect(0,0,cv.width,cv.height);x.drawImage(img,0,0,cv.width,cv.height);
+  cv.toBlob(b=>{const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="tree.png";document.body.appendChild(a);a.click();a.remove();toast("Saved tree.png")})};img.onerror=()=>toast("PNG export failed – use SVG");img.src="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(s)};
+function tipTable(){layout();const rows=[];(function w(n){if(isTip(n))rows.push(n);else n.children.forEach(w)})(S.root);return rows}
+$("excsv").onclick=()=>{const cols=S.meta.columns;const q=v=>{v=String(v??"");return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
+  const lines=[["order","tip","original_name",...cols].map(q).join(",")];tipTable().forEach((n,i)=>{const m=metaOf(n)||{};lines.push([i+1,n.name,n.orig,...cols.map(c=>m[c])].map(q).join(","))});dl("tip_table.csv",lines.join("\n")+"\n","text/csv")};
+
+/* ---------------- toast + streamlit bridge ---------------- */
+let tt;function toast(m){const t=$("toast");t.textContent=m;t.style.opacity=1;clearTimeout(tt);tt=setTimeout(()=>t.style.opacity=0,2200)}
+const inST=window.parent!==window;
+function send(type,extra){window.parent.postMessage(Object.assign({isStreamlitMessage:true,type},extra),"*")}
+let et;function emit(){if(!inST)return;clearTimeout(et);et=setTimeout(()=>{
+  const tips=tipTable();
+  send("streamlit:setComponentValue",{dataType:"json",value:{sig:S.sig,edits:S.edits,newick:toNewick(S.root,false),newick_annotated:toNewick(S.root,true),tips:tips.map(t=>t.name),orig:tips.map(t=>t.orig),selected:selNodes().flatMap(n=>tipsOf(n)).map(t=>t.name)}})},400)}
+
+function load(args){
+  S.sig=args.sig||"";S.height=args.height||860;
+  let root;try{root=parseNewick(args.tree)}catch(e){$("svg").innerHTML="";$("info").textContent="Could not read tree: "+e.message;return}
+  const tr=args.translate||{};
+  allNodes(root).forEach(n=>{if(isTip(n)){if(tr[n.name]!==undefined)n.name=tr[n.name];n.orig=n.name}});
+  S.root=root;S.sel=new Set();S.undo=[];S.redo=[];S.edits=0;
+  S.meta=args.meta||{columns:[],rows:{}};S.freq=args.freq||{columns:[],rows:{}};
+  S.mIdx=buildIdx(S.meta.rows);S.fIdx=buildIdx(S.freq.rows);setupColors();
+  const o=S.opts;o.cby="";o.strips=[];o.fcols=S.freq.columns.slice(0,Math.min(12,S.freq.columns.length));
+  const sel=(id,opts,first)=>{$(id).innerHTML=(first||"")+opts.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join("")};
+  sel("lsrc",S.meta.columns,'<option value="__name">Tip name</option>');o.lsrc="__name";
+  sel("cby",S.meta.columns,'<option value="">(none)</option>');
+  sel("mcol",S.meta.columns);fillMval();
+  fillChecks("strips",S.meta.columns,"strips");fillChecks("fcols",S.freq.columns,"fcols");setChecks("fcols",S.freq.columns,o.fcols);
+  fillEcol();
+  if(!S.freq.columns.length)o.fcols=[];
+  const nt=tipsOf(root).length;o.rowH=nt>150?10:nt>60?13:16;$("rh").value=o.rowH;o.fs=nt>150?9:nt>60?11:12;$("fs").value=o.fs;
+  S.zoom=1;render();updInfo();
+  setTimeout(()=>send("streamlit:setFrameHeight",{height:S.height}),0);
+  if(!inST)document.body.style.height=S.height+"px";
+}
+if(inST){
+  window.addEventListener("message",ev=>{const d=ev.data;if(!d||d.type!=="streamlit:render")return;
+    const a=d.args||{};const key=JSON.stringify([a.sig,a.height]);if(key===S._key&&S.root)return;S._key=key;load(a)});
+  send("streamlit:componentReady",{apiVersion:1});send("streamlit:setFrameHeight",{height:860});
+}else{
+  // standalone demo (opened directly in a browser)
+  const q=new URLSearchParams(location.search);
+  fetch("demo.json").then(r=>r.json()).then(load).catch(()=>{$("info").textContent="Standalone mode: no demo.json found. Run via Streamlit."})}
+</script></body></html>
